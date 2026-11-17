@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f0f12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Posely">
+<title>Posely – Pose Guide Camera</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f0f12; --panel:#18181d; --panel2:#222229; --line:#2c2c35;
+  --text:#f4f2ee; --muted:#9a98a3; --accent:#ff6b4a; --accent2:#ffd36b;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#050506;color:var(--text);font-family:"Plus Jakarta Sans",system-ui,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+#app{max-width:480px;height:100%;margin:0 auto;background:var(--bg);display:flex;flex-direction:column;position:relative;overflow:hidden}
+.top{padding:calc(14px + var(--safe-t)) 18px 10px;display:flex;align-items:baseline;justify-content:space-between}
+.brand{font-weight:800;font-size:24px;letter-spacing:-.5px}
+.brand b{color:var(--accent)}
+.sub{color:var(--muted);font-size:13px}
+main{flex:1;overflow:hidden;position:relative}
+.view{position:absolute;inset:0;overflow-y:auto;padding:0 16px 20px;display:none}
+.view.active{display:block}
+#v-camera{padding:0;display:none;flex-direction:column;overflow:hidden}
+#v-camera.active{display:flex}
+
+/* chips + grid */
+.chips{display:flex;gap:8px;overflow-x:auto;padding:4px 0 14px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;padding:8px 14px;border-radius:999px;background:var(--panel2);color:var(--muted);font-size:13px;font-weight:600;border:1px solid var(--line)}
+.chip.on{background:var(--accent);color:#1a0c07;border-color:var(--accent)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;text-align:left;display:flex;flex-direction:column}
+.card .thumb{aspect-ratio:3/4;background:radial-gradient(120% 90% at 50% 10%,#2b2b35 0%,#141418 70%);display:flex;align-items:center;justify-content:center;padding:14px}
+.card .thumb svg,.card .thumb img{width:100%;height:100%;object-fit:contain}
+.card .thumb svg{opacity:.85}
+.loadingFig{width:60%;height:80%;border-radius:40px;background:linear-gradient(90deg,#26262e,#33333d,#26262e);background-size:200% 100%;animation:sh 1.2s infinite linear}
+@keyframes sh{to{background-position:-200% 0}}
+.card .meta{padding:10px 12px 12px}
+.card .name{font-weight:700;font-size:14px}
+.card .cat{color:var(--muted);font-size:12px;margin-top:2px}
+.loadOwn{display:block;margin:16px 0 6px;padding:16px;border:1.5px dashed #4a4a55;border-radius:16px;text-align:center;color:var(--accent2);font-weight:700;font-size:14px;cursor:pointer}
+.loadOwn small{display:block;color:var(--muted);font-weight:500;margin-top:4px}
+.empty{color:var(--muted);font-size:14px;padding:30px 10px;text-align:center;grid-column:1/-1}
+
+/* camera */
+.stage{position:relative;width:100%;aspect-ratio:3/4;background:#000;overflow:hidden;flex:none;touch-action:none}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.stage video.mirror{transform:scaleX(-1)}
+.gridlines{position:absolute;inset:0;pointer-events:none;display:none;
+  background-image:linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px),transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px)),
+  linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px),transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px))}
+.gridlines.on{display:block}
+.guide{position:absolute;left:50%;top:55%;height:78%;aspect-ratio:var(--ar,.5);transform:translate(-50%,-50%) scale(var(--s,1)) scaleX(var(--fx,1));cursor:grab;touch-action:none;opacity:.55;transition:opacity .15s}
+.guide svg,.guide img{width:100%;height:100%;display:block;object-fit:contain;filter:drop-shadow(0 2px 8px rgba(0,0,0,.35));pointer-events:none;user-select:none;-webkit-user-drag:none}
+.poseTag{position:absolute;left:12px;top:12px;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);padding:7px 12px;border-radius:999px;font-size:12px;font-weight:700;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tipBtn{position:absolute;right:12px;top:12px;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);width:34px;height:34px;border-radius:50%;font-weight:800}
+.tipBox{position:absolute;left:12px;right:12px;bottom:12px;background:rgba(15,15,18,.85);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:13px;line-height:1.45;display:none}
+.tipBox.on{display:block}
+.tipBox b{color:var(--accent2)}
+.countdown{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:110px;font-weight:800;pointer-events:none;text-shadow:0 4px 30px rgba(0,0,0,.6)}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
+.nocam{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;gap:12px;background:radial-gradient(100% 70% at 50% 30%,#23232b,#0b0b0d)}
+.nocam[hidden]{display:none}
+.nocam h3{margin:0;font-size:18px}
+.nocam p{margin:0;color:var(--muted);font-size:13px;line-height:1.5}
+.btn{display:inline-block;padding:12px 18px;border-radius:14px;background:var(--accent);color:#1a0c07;font-weight:800;font-size:14px;cursor:pointer}
+.btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+
+.controls{flex:1;display:flex;flex-direction:column;justify-content:space-evenly;padding:8px 18px calc(6px);gap:6px;min-height:0}
+.sliders{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;align-items:center;font-size:12px;color:var(--muted)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.row{display:flex;align-items:center;justify-content:space-between}
+.ctl{width:48px;height:48px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-direction:column;gap:1px;position:relative}
+.ctl svg{width:20px;height:20px}
+.ctl.on{background:#3a2620;border-color:var(--accent);color:var(--accent)}
+.shutter{width:74px;height:74px;border-radius:50%;border:4px solid #fff;padding:4px;flex:none}
+.shutter span{display:block;width:100%;height:100%;border-radius:50%;background:var(--accent);transition:transform .1s}
+.shutter:active span{transform:scale(.88)}
+.ctl .badge{position:absolute;bottom:-4px;right:-4px;background:var(--accent);color:#1a0c07;border-radius:999px;font-size:10px;padding:1px 5px}
+
+/* spots */
+.spot{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:12px;display:flex;gap:14px}
+.spot .mini{width:74px;flex:none;aspect-ratio:3/4;border-radius:12px;background:radial-gradient(120% 90% at 50% 10%,#2b2b35,#141418 70%);padding:6px}
+.spot .mini svg,.spot .mini img{width:100%;height:100%;object-fit:contain}
+.spot h4{margin:0 0 2px;font-size:15px}
+.spot .loc{color:var(--accent2);font-size:12px;font-weight:600}
+.spot p{margin:6px 0 10px;color:var(--muted);font-size:13px;line-height:1.45}
+.spot .use{font-size:12px;padding:8px 12px;border-radius:10px}
+.secHead{font-size:13px;color:var(--muted);margin:4px 0 12px;line-height:1.5}
+
+/* gallery */
+.gal{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.gal img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:6px;display:block;cursor:pointer}
+
+/* tabs */
+.tabs{display:flex;border-top:1px solid var(--line);background:var(--bg);padding:6px 6px calc(6px + var(--safe-b))}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;font-size:11px;font-weight:700;color:var(--muted)}
+.tab svg{width:22px;height:22px}
+.tab.on{color:var(--accent)}
+
+/* viewer */
+.viewer{position:absolute;inset:0;background:rgba(5,5,6,.96);display:none;flex-direction:column;z-index:20;padding:calc(12px + var(--safe-t)) 16px calc(16px + var(--safe-b))}
+.viewer.on{display:flex}
+.viewer .vtop{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.viewer img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:10px}
+.viewer .hint{color:var(--muted);font-size:12px;text-align:center;margin:10px 0}
+.viewer .acts{display:flex;gap:10px;justify-content:center}
+.toast{position:absolute;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);background:#fff;color:#111;padding:10px 16px;border-radius:999px;font-size:13px;font-weight:700;opacity:0;transition:.25s;pointer-events:none;z-index:30;white-space:nowrap}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">Pose<b>ly</b></div>
+    <div class="sub" id="viewTitle">Pose guides</div>
+  </header>
+
+  <main>
+    <!-- POSES -->
+    <section id="v-poses" class="view active">
+      <div class="chips" id="cats"></div>
+      <div class="grid" id="poseGrid"></div>
+      <label class="loadOwn">+ Load your own guide
+        <small>Pick any photo (e.g. a screenshot of a pose you like) and use it as a see-through guide</small>
+        <input type="file" accept="image/*" id="ownGuide" hidden>
+      </label>
+    </section>
+
+    <!-- CAMERA -->
+    <section id="v-camera" class="view">
+      <div class="stage" id="stage">
+        <video id="video" playsinline autoplay muted></video>
+        <div class="gridlines" id="gridlines"></div>
+        <div class="guide" id="guide"></div>
+        <div class="poseTag" id="poseTag"></div>
+        <button class="tipBtn" id="tipBtn" aria-label="Pose tip">?</button>
+        <div class="tipBox" id="tipBox"></div>
+        <div class="countdown" id="countdown"></div>
+        <div class="flash" id="flash"></div>
+        <div class="nocam" id="nocam" hidden>
+          <h3>Live camera isn't available here</h3>
+          <p id="nocamMsg">This page is running somewhere that blocks camera access. Open the app file in Chrome or Safari, or host it online, to get the live guide overlay.</p>
+          <label class="btn">Take a photo instead<input type="file" accept="image/*" capture="environment" id="fallbackShot" hidden></label>
+          <button class="btn ghost" id="retryCam">Try camera again</button>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="sliders">
+          <span>Guide</span><input type="range" id="opacity" min="0" max="100" value="55" aria-label="Guide opacity">
+          <span>Size</span><input type="range" id="size" min="40" max="180" value="100" aria-label="Guide size">
+        </div>
+        <div class="row">
+          <button class="ctl" id="gridBtn" aria-label="Grid">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></button>
+          <button class="ctl" id="flipBtn" aria-label="Mirror guide">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M8 7l-5 5 5 5V7zM16 7l5 5-5 5V7z"/></svg></button>
+          <button class="shutter" id="shutter" aria-label="Take photo"><span></span></button>
+          <button class="ctl" id="timerBtn" aria-label="Timer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg><span class="badge" id="timerBadge" hidden></span></button>
+          <button class="ctl" id="switchBtn" aria-label="Switch camera">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><path d="M9 13a3 3 0 0 1 5.2-2M15 13a3 3 0 0 1-5.2 2M14 9v2h-2M10 17v-2h2"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SPOTS -->
+    <section id="v-spots" class="view">
+      <p class="secHead">Photo spots around Sri Lanka, each with a pose that works there. Tap <b>Use this pose</b> to open the camera with the guide ready.</p>
+      <div id="spotList"></div>
+    </section>
+
+    <!-- GALLERY -->
+    <section id="v-gallery" class="view">
+      <p class="secHead" id="galHead">Photos you take appear here. The guide outline is not saved in the photo.</p>
+      <div class="gal" id="gal"></div>
+    </section>
+  </main>
+
+  <nav class="tabs">
+    <button class="tab on" data-v="poses"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="4.5" r="2.5"/><path d="M12 7v7M6 9l6 2 6-2M9 21l3-7 3 7"/></svg>Poses</button>
+    <button class="tab" data-v="camera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Camera</button>
+    <button class="tab" data-v="spots"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Spots</button>
+    <button class="tab" data-v="gallery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-5-5-9 10"/></svg>Gallery</button>
+  </nav>
+
+  <div class="viewer" id="viewer">
+    <div class="vtop"><b id="vCount"></b><button class="btn ghost" id="vClose">Close</button></div>
+    <img id="vImg" alt="Captured photo">
+    <div class="hint">Can't download? Long-press (phone) or right-click (computer) the photo to save it.</div>
+    <div class="acts">
+      <a class="btn" id="vSave" download="posely.jpg">Save</a>
+      <button class="btn ghost" id="vDel">Delete</button>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* ---------- Pose figure engine ---------- */
+// Joints are [x, y, z] in a 100 x 200 box per person (y down, z toward camera).
+const BASE={head:[50,22,0],neck:[50,38,0],pelvis:[50,100,0],lE:[36,70,0],lH:[34,98,0],rE:[64,70,0],rH:[66,98,0],lK:[44,145,0],lF:[43,188,0],rK:[56,145,0],rF:[57,188,0]};
+const P=o=>{const r={};for(const k in BASE){const v=(o[k]||BASE[k]);r[k]=[v[0],v[1],v[2]||0];}return r;};
+const pt=a=>a.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ');
+
+// Flat fallback (used only if the phone has no WebGL)
+function fig(p,dx=0,dy=0){
+  const t=q=>[q[0]+dx,q[1]+dy];
+  const n=t(p.neck),pv=t(p.pelvis),h=t(p.head);
+  const lS=[n[0]-13,n[1]+4],rS=[n[0]+13,n[1]+4],lHp=[pv[0]-9,pv[1]],rHp=[pv[0]+9,pv[1]];
+  const L=(a,w)=>`<polyline fill="none" stroke-width="${w}" points="${pt(a)}"/>`;
+  return `<polygon stroke-width="9" points="${pt([lS,rS,rHp,lHp])}"/>`+L([n,h],9)+
+    L([lS,t(p.lE),t(p.lH)],9)+L([rS,t(p.rE),t(p.rH)],9)+L([lHp,t(p.lK),t(p.lF)],12)+L([rHp,t(p.rK),t(p.rF)],12)+
+    `<circle cx="${h[0]}" cy="${h[1]}" r="11.5"/>`;
+}
+function svgFor(pose){
+  const w=pose.w||100;
+  return `<svg viewBox="-6 -6 ${w+12} 212" xmlns="http://www.w3.org/2000/svg" fill="#e9dccd" stroke="#e9dccd" stroke-linecap="round" stroke-linejoin="round">${pose.figs.map(f=>fig(f[0],f[1]||0,f[2]||0)).join('')}</svg>`;
+}
+
+/* ---------- 3D mannequin renderer (WebGL ray-marched, smooth-blended body parts) ---------- */
+const MAXP=64;
+const FRAG=`
+precision highp float;
+uniform vec2 uRes; uniform vec4 uView; uniform float uYaw; uniform vec3 uCenter; uniform int uN;
+uniform vec4 uA[${MAXP}]; uniform vec4 uB[${MAXP}]; uniform vec4 uC[${MAXP}];
+float smin(float a,float b,float k){float h=max(k-abs(a-b),0.0)/k;return min(a,b)-h*h*k*0.25;}
+float sdRC(vec3 p,vec3 a,vec3 b,float r1,float r2){
+  vec3 ba=b-a; float l2=dot(ba,ba); float rr=r1-r2; float a2=l2-rr*rr; float il2=1.0/l2;
+  vec3 pa=p-a; float y=dot(pa,ba); float z=y-l2; vec3 xv=pa*l2-ba*y; float x2=dot(xv,xv);
+  float y2=y*y*l2; float z2=z*z*l2; float k=sign(rr)*rr*rr*x2;
+  if(sign(z)*a2*z2>k) return sqrt(x2+z2)*il2-r2;
+  if(sign(y)*a2*y2<k) return sqrt(x2+y2)*il2-r1;
+  return (sqrt(x2*a2*il2)+y*rr)*il2-r1;
+}
+float sdEl(vec3 p,vec3 r){float k0=length(p/r);float k1=length(p/(r*r));return k0*(k0-1.0)/k1;}
+float map(vec3 p){
+  float d=1e5;
+  for(int i=0;i<${MAXP};i++){
+    if(i>=uN) break;
+    vec4 A=uA[i]; vec4 B=uB[i]; vec4 C=uC[i]; float di;
+    if(C.x<0.5){ di=sdRC(p,A.xyz,B.xyz,A.w,B.w); }
+    else if(C.x<1.5){ float s=1.5; vec3 q=p; q.z=A.z+(p.z-A.z)*s; vec3 b=B.xyz; b.z=A.z+(b.z-A.z)*s; di=sdRC(q,A.xyz,b,A.w,B.w)/s; }
+    else { di=sdEl(p-A.xyz,B.xyz); }
+    d=smin(d,di,C.y);
+  }
+  return d;
+}
+vec3 rotY(vec3 v,float a){float c=cos(a),s=sin(a);return vec3(c*v.x+s*v.z,v.y,-s*v.x+c*v.z);}
+vec3 nrm(vec3 p){vec2 e=vec2(0.12,0.0);return normalize(vec3(map(p+e.xyy)-map(p-e.xyy),map(p+e.yxy)-map(p-e.yxy),map(p+e.yyx)-map(p-e.yyx)));}
+void main(){
+  vec2 uv=gl_FragCoord.xy/uRes;
+  vec3 ro=vec3(uView.x+uv.x*uView.z, uView.y-(1.0-uv.y)*uView.w, 140.0);
+  vec3 rd=vec3(0.0,0.0,-1.0);
+  ro=rotY(ro-uCenter,-uYaw)+uCenter; rd=rotY(rd,-uYaw);
+  float t=0.0, minD=1e5, tBest=0.0; bool hit=false;
+  for(int i=0;i<140;i++){
+    vec3 p=ro+rd*t; float d=map(p);
+    if(d<minD){minD=d;tBest=t;}
+    if(d<0.04){hit=true;break;}
+    t+=max(d*0.8,0.05); if(t>280.0) break;
+  }
+  float px=uView.z/uRes.x;
+  float alpha=hit?1.0:clamp(1.0-minD/(px*1.1),0.0,1.0);
+  if(alpha<=0.0){gl_FragColor=vec4(0.0);return;}
+  vec3 p=ro+rd*tBest; vec3 n=nrm(p); vec3 V=-rd;
+  float ao=0.0, sc=1.0;
+  for(int i=1;i<=5;i++){float h=1.2*float(i);ao+=(h-map(p+n*h))*sc;sc*=0.65;}
+  ao=clamp(1.0-0.09*ao,0.0,1.0);
+  vec3 L=normalize(rotY(vec3(-0.55,0.6,0.6),-uYaw));
+  float dif=clamp(dot(n,L)*0.5+0.5,0.0,1.0); dif=dif*dif;
+  float fill=clamp(dot(n,normalize(rotY(vec3(0.7,-0.2,0.5),-uYaw)))*0.5+0.5,0.0,1.0);
+  float rim=pow(1.0-clamp(dot(n,V),0.0,1.0),3.0);
+  float spec=pow(clamp(dot(reflect(-L,n),V),0.0,1.0),24.0);
+  vec3 base=vec3(0.93,0.84,0.75);
+  vec3 col=base*(0.30+0.78*dif)*mix(0.55,1.0,ao)+base*vec3(0.10,0.09,0.09)*fill+vec3(1.0,0.96,0.92)*rim*0.22+vec3(spec*0.12);
+  col=pow(clamp(col,0.0,1.0),vec3(0.95));
+  gl_FragColor=vec4(col,alpha);
+}`;
+
+const R3={gl:null,canvas:null,loc:{},ok:false};
+function initGL(){
+  try{
+    const c=document.createElement('canvas');
+    const gl=c.getContext('webgl',{preserveDrawingBuffer:true,premultipliedAlpha:false,alpha:true,antialias:false});
+    if(!gl) return false;
+    const sh=(type,src)=>{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;};
+    const pr=gl.createProgram();
+    gl.attachShader(pr,sh(gl.VERTEX_SHADER,'attribute vec2 a;void main(){gl_Position=vec4(a,0.0,1.0);}'));
+    gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,FRAG));
+    gl.linkProgram(pr);if(!gl.getProgramParameter(pr,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(pr));
+    gl.useProgram(pr);
+    const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+    const a=gl.getAttribLocation(pr,'a');gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,2,gl.FLOAT,false,0,0);
+    for(const n of ['uRes','uView','uYaw','uCenter','uN','uA','uB','uC'])R3.loc[n]=gl.getUniformLocation(pr,n);
+    Object.assign(R3,{gl,canvas:c,ok:true});
+    return true;
+  }catch(e){console.warn('3D renderer unavailable',e);return false;}
+}
+
+// Turn one skeleton into body parts (type 0 = tapered limb, 1 = flattened torso part, 2 = ellipsoid)
+function bodyParts(p,dx,dy,out){
+  const J=q=>[q[0]+dx,-(q[1]+dy),q[2]];
+  const add=(type,a,ra,b,rb,k)=>out.push([type,a,ra,b,rb,k]);
+  const lerp=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+  const off=(a,x,y,z)=>[a[0]+x,a[1]+y,a[2]+(z||0)];
+  const N=J(p.neck),V=J(p.pelvis),H=J(p.head);
+  const lS=off(N,-12.5,-4.5),rS=off(N,12.5,-4.5),lHp=off(V,-8.5,0),rHp=off(V,8.5,0);
+  const c1=lerp(N,V,0.20),c2=lerp(N,V,0.52),w=lerp(N,V,0.80);
+  // torso
+  add(1,off(lS,2.5,-1),6.5,off(rS,-2.5,-1),6.5,5);
+  add(1,c1,12.5,c2,11.2,7);
+  add(1,c2,9.8,w,9.9,7);
+  add(1,lHp,9.4,rHp,9.4,8);
+  // neck + head
+  add(0,off(N,0,-2),5.2,lerp(N,H,0.62),4.6,3);
+  add(2,off(H,0,0.5),0,[9.6,12.2,10.6],0,3);
+  // arms
+  for(const s of ['l','r']){
+    const S=s==='l'?lS:rS,E=J(p[s+'E']),Hd=J(p[s+'H']);
+    add(0,S,5.6,E,3.9,3);
+    add(0,E,3.8,Hd,2.6,1.6);
+    const dir=[Hd[0]-E[0],Hd[1]-E[1],Hd[2]-E[2]],l=Math.hypot(...dir)||1;
+    add(0,Hd,2.9,[Hd[0]+dir[0]/l*6.5,Hd[1]+dir[1]/l*6.5,Hd[2]+dir[2]/l*6.5],2.2,1.6);
+    // legs
+    const Hp=s==='l'?lHp:rHp,K=J(p[s+'K']),F=J(p[s+'F']);
+    const A=off(F,0,4.5);
+    add(0,lerp(Hp,V,0.15),8.6,K,5.0,4);
+    add(0,K,4.9,lerp(K,A,0.35),4.7,1.5);
+    add(0,lerp(K,A,0.35),4.6,A,3.0,2);
+    add(0,A,3.2,off(F,0,1.5,10),2.5,1.5);
+  }
+}
+
+function render3D(pose){
+  if(!R3.ok) return null;
+  const parts=[];let pts=[];
+  for(const f of pose.figs){
+    const dx=f[1]||0,dy=f[2]||0;bodyParts(f[0],dx,dy,parts);
+    for(const k in f[0])pts.push([f[0][k][0]+dx,f[0][k][1]+dy]);
+  }
+  const m=17;
+  const minX=Math.min(...pts.map(q=>q[0]))-m,maxX=Math.max(...pts.map(q=>q[0]))+m;
+  const minY=Math.min(...pts.map(q=>q[1]))-m,maxY=Math.max(...pts.map(q=>q[1]))+8;
+  const w=maxX-minX,h=maxY-minY,S=Math.min(3,1400/w);
+  const {gl,canvas,loc}=R3;
+  canvas.width=Math.round(w*S);canvas.height=Math.round(h*S);
+  gl.viewport(0,0,canvas.width,canvas.height);
+  const A=new Float32Array(MAXP*4),B=new Float32Array(MAXP*4),C=new Float32Array(MAXP*4);
+  parts.slice(0,MAXP).forEach((q,i)=>{
+    A.set([q[1][0],q[1][1],q[1][2],q[2]],i*4);
+    B.set([q[3][0],q[3][1],q[3][2],q[4]],i*4);
+    C.set([q[0],q[5],0,0],i*4);
+  });
+  gl.uniform2f(loc.uRes,canvas.width,canvas.height);
+  gl.uniform4f(loc.uView,minX,-minY,w,h);
+  gl.uniform1f(loc.uYaw,pose.yaw==null?(pose.figs.length>1?0.18:0.32):pose.yaw);
+  gl.uniform3f(loc.uCenter,(minX+maxX)/2,-(minY+maxY)/2,0);
+  gl.uniform1i(loc.uN,Math.min(parts.length,MAXP));
+  gl.uniform4fv(loc.uA,A);gl.uniform4fv(loc.uB,B);gl.uniform4fv(loc.uC,C);
+  gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  return {src:canvas.toDataURL('image/png'),ar:canvas.width/canvas.height};
+}
+
+/* ---------- Pose library ---------- */
+const crossedArms={lE:[35,76,8],lH:[60,71,15],rE:[65,76,8],rH:[40,71,13]};
+const squatBody={head:[50,72,8],neck:[50,88,6],pelvis:[50,142,-8],lE:[34,114,16],lH:[44,128,22],rE:[66,114,16],rH:[56,128,22],lK:[32,130,18],lF:[40,188,4],rK:[68,130,18],rF:[60,188,4]};
+const jumpP=P({lE:[30,28],lH:[24,8],rE:[70,28],rH:[76,8],lK:[38,132,14],lF:[42,170,-4],rK:[62,132,14],rF:[58,170,-4]});
+const POSES=[
+ {id:'hip',name:'Hand on hip',cat:'Solo',figs:[[P({rE:[73,72,-3],rH:[58,97,5],lK:[47,145,5],lF:[54,188,6],rK:[56,145],rF:[59,188]})]],
+  tip:'Pop one hip, cross your front leg over, and leave a small gap between arm and waist. It makes the silhouette cleaner.'},
+ {id:'walk',name:'Walk & look back',cat:'Solo',figs:[[P({head:[54,22],lE:[39,72,7],lH:[33,96,12],rE:[62,72,-6],rH:[69,93,-11],lK:[43,144,12],lF:[35,186,4],rK:[57,142,-8],rF:[63,186,-18]})]],
+  tip:'Actually walk slowly while the photographer uses the 3s timer or burst. Glance over your shoulder mid-step.'},
+ {id:'chin',name:'Chin on hand (crouch)',cat:'Solo',figs:[[P(Object.assign({},squatBody,{head:[52,72,9],rE:[64,118,20],rH:[55,88,16],lE:[34,118,20],lH:[45,132,24]}))]],
+  tip:'Crouch low, rest one elbow on your knee and your chin on that hand. Look away from the camera for a candid feel.'},
+ {id:'hair',name:'Hand in hair',cat:'Solo',figs:[[P({head:[49,22],rE:[75,42,-4],rH:[60,19,-2]})]],
+  tip:'Lift the elbow out to the side, tilt your head toward the raised arm and look slightly away from the lens.'},
+ {id:'pockets',name:'Hands in pockets',cat:'Solo',figs:[[P({head:[48,22],lE:[33,76,-4],lH:[41,100,4],rE:[67,76,-4],rH:[59,100,4],lK:[45,146],lF:[42,188],rK:[58,144,5],rF:[63,186,7]})]],
+  tip:'Thumbs out, shoulders relaxed, weight on your back leg. Looks great against walls and doors.'},
+ {id:'arms',name:'Arms wide open',cat:'Solo',figs:[[P({lE:[30,26],lH:[21,6],rE:[70,26],rH:[79,6],lK:[42,145],lF:[37,188],rK:[58,145],rF:[63,188]})]],
+  tip:'Best from behind at a viewpoint. Photographer: crouch low and keep the horizon in the top third.'},
+ {id:'crossed',name:'Arms crossed',cat:'Solo',figs:[[P(crossedArms)]],
+  tip:'Turn about 30° away from the camera and bring your chin slightly down for a confident look.'},
+ {id:'peace',name:'Peace by the face',cat:'Solo',figs:[[P({head:[51,22],rE:[72,60,6],rH:[63,30,11]})]],
+  tip:'Keep the hand close to your cheek, not in front of it. Smile with your eyes.'},
+ {id:'sit',name:'Sitting on steps',cat:'Solo',figs:[[P({head:[50,58,4],neck:[50,74,3],pelvis:[50,132],lE:[35,104,10],lH:[40,128,25],rE:[65,104,10],rH:[60,128,25],lK:[39,134,30],lF:[36,188,30],rK:[61,134,30],rF:[64,188,32]})]],
+  tip:'Sit on the edge, feet on different steps, lean forward a little. Shoot from a slightly lower angle.'},
+ {id:'squat',name:'Street squat',cat:'Solo',figs:[[P(squatBody)]],
+  tip:'Elbows resting on knees, look past the camera. Works well with graffiti or colourful walls.'},
+
+ {id:'hands',name:'Holding hands',cat:'Couple',w:160,figs:[
+   [P({head:[52,22],rE:[66,72,3],rH:[80,96,6],lE:[37,72,-4],lH:[35,98,-6],lK:[43,144,8],lF:[36,186,4],rK:[57,142,-6],rF:[62,186,-12]})],
+   [P({head:[48,22],lE:[34,72,3],lH:[20,96,6],lK:[44,142,-6],lF:[38,186,-12],rK:[57,144,8],rF:[64,186,4]}),60]],
+  tip:'Walk toward the camera, look at each other and laugh. Take many shots; the in-between moments are the best ones.'},
+ {id:'shoulder',name:'Arm around shoulder',cat:'Couple',w:160,figs:[
+   [P({head:[53,22],rE:[80,36,-4],rH:[100,40,-7]})],
+   [P({head:[47,24],lE:[36,74],lH:[30,100],rE:[64,72,-3],rH:[58,98,5]}),60]],
+  tip:'Lean your heads toward each other. The taller person can bend the knees a little.'},
+ {id:'backtoback',name:'Back to back',cat:'Couple',w:152,figs:[
+   [P(Object.assign({head:[54,22]},crossedArms))],
+   [P(Object.assign({head:[46,22]},crossedArms)),52]],
+  tip:'Stand back to back, arms crossed, both turn your heads toward the camera.'},
+
+ {id:'jump',name:'Jump together',cat:'Friends',w:220,figs:[[jumpP,0,-14],[jumpP,60,-20],[jumpP,120,-14]],
+  tip:'Count "1, 2, 3, jump!" and use burst mode. Shoot from low so the jump looks higher.'},
+ {id:'squad',name:'Squad line-up',cat:'Friends',w:220,figs:[
+   [P({lE:[30,72,-3],lH:[42,97,5],head:[52,22]})],
+   [P(crossedArms),60],
+   [P({rE:[70,72,-3],rH:[58,97,5],head:[48,22]}),120]],
+  tip:'Outside people turn slightly inward with a hand on the hip; the middle person faces the camera.'},
+ {id:'stack',name:'Squat & stand',cat:'Friends',w:220,figs:[
+   [P(crossedArms)],
+   [P(squatBody),60],
+   [P(crossedArms),120]],
+  tip:'Mixing heights makes group photos look designed. Tallest people on the outside.'}
+];
+
+/* render all poses to images, a few per frame so the app stays responsive */
+const IMG={};
+function visual(p){
+  if(p.img) return `<img src="${p.img}" alt="">`;
+  if(IMG[p.id]) return `<img src="${IMG[p.id].src}" alt="">`;
+  return R3.ok?'<div class="loadingFig"></div>':svgFor(p);
+}
+function renderAllPoses(){
+  if(!initGL()) return;
+  let i=0;
+  const step=()=>{
+    const p=POSES[i++];if(!p)return;
+    const r=render3D(p);
+    if(r){IMG[p.id]=r;document.querySelectorAll(`[data-pv="${p.id}"]`).forEach(el=>el.innerHTML=visual(p));if(S.pose&&S.pose.id===p.id)applyGuide();}
+    setTimeout(step,0);
+  };
+  step();
+}
+
+const CATS=['All','Solo','Couple','Friends','Mine'];
+
+const SPOTS=[
+ {name:'Nine Arch Bridge',loc:'Ella',pose:'walk',tip:'Stand on the tracks near the bridge edge and walk away from the camera. Arrive early morning for soft light and fewer people. Step off well before any train comes.'},
+ {name:'Sigiriya / Pidurangala view',loc:'Dambulla',pose:'arms',tip:'From Pidurangala rock, stand with your back to the camera facing Sigiriya. Sunrise gives the best colours.'},
+ {name:'Galle Fort Lighthouse',loc:'Galle',pose:'hip',tip:'Use the fort wall as a ledge, with the lighthouse in the background. Golden hour, about an hour before sunset.'},
+ {name:'Lotus Tower',loc:'Colombo',pose:'pockets',tip:'At night when the tower is lit. Photographer gets low and shoots upward to fit the whole tower.'},
+ {name:'Coconut Tree Hill',loc:'Mirissa',pose:'walk',tip:'Walk along the ridge between the palms. Late afternoon so the sea glows behind you.'},
+ {name:'Little Adam’s Peak',loc:'Ella',pose:'sit',tip:'Sit on the rocks near the summit with the valley behind you. Keep a safe distance from the edge.'},
+ {name:'Tea estates',loc:'Nuwara Eliya',pose:'hair',tip:'Stand between the tea rows with hills behind. Overcast days give soft, even light on faces.'},
+ {name:'Pettah street walls',loc:'Colombo',pose:'squat',tip:'Colourful shopfronts and murals make great backgrounds. Go early before the crowds.'}
+];
+
+/* ---------- State ---------- */
+const $=id=>document.getElementById(id);
+const S={cat:'All',pose:POSES[0],custom:[],stream:null,facing:'environment',timer:0,photos:[],flip:1,scale:1,pos:{x:50,y:55},view:'poses',vIndex:0};
+
+/* ---------- Poses view ---------- */
+function renderCats(){
+  $('cats').innerHTML=CATS.map(c=>`<button class="chip ${c===S.cat?'on':''}" data-c="${c}">${c}</button>`).join('');
+}
+function cardHTML(p){
+  return `<button class="card" data-id="${p.id}"><div class="thumb" data-pv="${p.id}">${visual(p)}</div><div class="meta"><div class="name">${p.name}</div><div class="cat">${p.cat}</div></div></button>`;
+}
+function renderGrid(){
+  const all=[...POSES,...S.custom];
+  const list=S.cat==='All'?all:all.filter(p=>p.cat===S.cat);
+  $('poseGrid').innerHTML=list.length?list.map(cardHTML).join(''):`<div class="empty">No guides here yet. Use “Load your own guide” below.</div>`;
+}
+$('cats').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;S.cat=b.dataset.c;renderCats();renderGrid();};
+$('poseGrid').onclick=e=>{const c=e.target.closest('.card');if(!c)return;choosePose(c.dataset.id);};
+function findPose(id){return [...POSES,...S.custom].find(p=>p.id===id);}
+function choosePose(id){S.pose=findPose(id);S.scale=1;S.pos={x:50,y:55};$('size').value=100;applyGuide();go('camera');}
+
+$('ownGuide').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    const im=new Image();
+    im.onload=()=>{
+      const p={id:'mine'+Date.now(),name:'My guide '+(S.custom.length+1),cat:'Mine',img:r.result,ar:im.width/im.height,tip:'Your own guide. Line yourself up with the photo, then lower the guide slider to check the details.'};
+      S.custom.push(p);S.cat='Mine';renderCats();renderGrid();choosePose(p.id);toast('Guide added');
+    };
+    im.src=r.result;
+  };
+  r.readAsDataURL(f);e.target.value='';
+};
+
+/* ---------- Guide overlay ---------- */
+const guide=$('guide');
+function applyGuide(){
+  const p=S.pose;
+  guide.innerHTML=visual(p);
+  const r=IMG[p.id];
+  const ar=p.img?p.ar:r?r.ar:((p.w||100)+12)/212;
+  guide.style.setProperty('--ar',ar);
+  guide.style.height=p.img?'92%':(p.w>150?'64%':'84%');
+  $('poseTag').textContent=p.name;
+  $('tipBox').innerHTML=`<b>${p.name}.</b> ${p.tip||''}`;
+  updateGuidePos();
+}
+function updateGuidePos(){
+  guide.style.left=S.pos.x+'%';guide.style.top=S.pos.y+'%';
+  guide.style.setProperty('--s',S.scale);guide.style.setProperty('--fx',S.flip);
+  guide.style.opacity=$('opacity').value/100;
+}
+$('opacity').oninput=updateGuidePos;
+$('size').oninput=e=>{S.scale=e.target.value/100;updateGuidePos();};
+$('flipBtn').onclick=()=>{S.flip*=-1;$('flipBtn').classList.toggle('on',S.flip<0);updateGuidePos();};
+$('gridBtn').onclick=()=>{$('gridlines').classList.toggle('on');$('gridBtn').classList.toggle('on');};
+$('tipBtn').onclick=()=>$('tipBox').classList.toggle('on');
+$('tipBox').onclick=()=>$('tipBox').classList.remove('on');
+
+// drag + pinch
+const pointers=new Map();let drag=null,pinch=null;
+guide.addEventListener('pointerdown',e=>{
+  guide.setPointerCapture(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pointers.size===1){drag={x:e.clientX,y:e.clientY,px:S.pos.x,py:S.pos.y};}
+  if(pointers.size===2){const [a,b]=[...pointers.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),s:S.scale};drag=null;}
+});
+guide.addEventListener('pointermove',e=>{
+  if(!pointers.has(e.pointerId))return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  const r=$('stage').getBoundingClientRect();
+  if(pinch&&pointers.size===2){const [a,b]=[...pointers.values()];setScale(pinch.s*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d);}
+  else if(drag){S.pos.x=Math.min(100,Math.max(0,drag.px+(e.clientX-drag.x)/r.width*100));S.pos.y=Math.min(100,Math.max(0,drag.py+(e.clientY-drag.y)/r.height*100));updateGuidePos();}
+});
+const endPtr=e=>{pointers.delete(e.pointerId);if(pointers.size<2)pinch=null;if(pointers.size===0)drag=null;};
+guide.addEventListener('pointerup',endPtr);guide.addEventListener('pointercancel',endPtr);
+$('stage').addEventListener('wheel',e=>{e.preventDefault();setScale(S.scale*(e.deltaY<0?1.06:.94));},{passive:false});
+function setScale(s){S.scale=Math.min(1.8,Math.max(.4,s));$('size').value=Math.round(S.scale*100);updateGuidePos();}
+
+/* ---------- Camera ---------- */
+const video=$('video');
+async function startCam(){
+  stopCam();
+  $('nocam').hidden=true;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){showNoCam();return;}
+  try{
+    S.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:S.facing,width:{ideal:1920},height:{ideal:1440}},audio:false});
+    video.srcObject=S.stream;
+    video.classList.toggle('mirror',S.facing==='user');
+    await video.play().catch(()=>{});
+  }catch(err){showNoCam(err);}
+}
+function stopCam(){if(S.stream){S.stream.getTracks().forEach(t=>t.stop());S.stream=null;}}
+function showNoCam(err){
+  $('nocam').hidden=false;
+  if(err&&err.name==='NotAllowedError'&&location.protocol.startsWith('http'))
+    $('nocamMsg').textContent='Camera permission was blocked. Allow camera access for this page in your browser settings, then tap “Try camera again”. Or take a normal photo below.';
+}
+$('retryCam').onclick=startCam;
+$('switchBtn').onclick=()=>{S.facing=S.facing==='user'?'environment':'user';startCam();};
+$('timerBtn').onclick=()=>{S.timer=S.timer===0?3:S.timer===3?10:0;const b=$('timerBadge');b.hidden=!S.timer;b.textContent=S.timer+'s';$('timerBtn').classList.toggle('on',!!S.timer);};
+
+$('shutter').onclick=async()=>{
+  if(!S.stream){ $('fallbackShot').click(); return; }
+  for(let i=S.timer;i>0;i--){$('countdown').textContent=i;await sleep(1000);}
+  $('countdown').textContent='';
+  capture();
+};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function capture(){
+  const vw=video.videoWidth,vh=video.videoHeight;if(!vw)return;
+  const target=3/4;let sw=vw,sh=vh;
+  if(vw/vh>target)sw=vh*target;else sh=vw/target;
+  const sx=(vw-sw)/2,sy=(vh-sh)/2;
+  const c=document.createElement('canvas');c.width=Math.round(sw);c.height=Math.round(sh);
+  const g=c.getContext('2d');
+  if(S.facing==='user'){g.translate(c.width,0);g.scale(-1,1);}
+  g.drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);
+  addPhoto(c.toDataURL('image/jpeg',.92));
+  const f=$('flash');f.style.transition='none';f.style.opacity=.85;requestAnimationFrame(()=>{f.style.transition='opacity .35s';f.style.opacity=0;});
+}
+$('fallbackShot').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>addPhoto(r.result);r.readAsDataURL(f);e.target.value='';
+};
+
+/* ---------- Gallery ---------- */
+function addPhoto(src){S.photos.unshift(src);renderGal();toast('Saved to Gallery');}
+function renderGal(){
+  $('gal').innerHTML=S.photos.map((s,i)=>`<img src="${s}" data-i="${i}" alt="Photo ${i+1}">`).join('');
+  $('galHead').textContent=S.photos.length?`${S.photos.length} photo${S.photos.length>1?'s':''} · tap to view and save. Photos stay until you close this page.`:'Photos you take appear here. The guide outline is not saved in the photo.';
+}
+$('gal').onclick=e=>{const im=e.target.closest('img');if(im)openViewer(+im.dataset.i);};
+function openViewer(i){S.vIndex=i;const s=S.photos[i];$('vImg').src=s;$('vSave').href=s;$('vSave').download='posely-'+Date.now()+'.jpg';$('vCount').textContent=`Photo ${i+1} of ${S.photos.length}`;$('viewer').classList.add('on');}
+$('vClose').onclick=()=>$('viewer').classList.remove('on');
+$('vDel').onclick=()=>{S.photos.splice(S.vIndex,1);renderGal();$('viewer').classList.remove('on');toast('Deleted');};
+
+/* ---------- Spots ---------- */
+$('spotList').innerHTML=SPOTS.map(s=>{const p=findPose(s.pose);return `<div class="spot"><div class="mini" data-pv="${p.id}">${visual(p)}</div><div><h4>${s.name}</h4><div class="loc">${s.loc} · ${p.name}</div><p>${s.tip}</p><button class="btn use" data-p="${s.pose}">Use this pose</button></div></div>`;}).join('');
+$('spotList').onclick=e=>{const b=e.target.closest('[data-p]');if(b)choosePose(b.dataset.p);};
+
+/* ---------- Navigation ---------- */
+const TITLES={poses:'Pose guides',camera:'Line up & shoot',spots:'Photo spots',gallery:'Your photos'};
+function go(v){
+  S.view=v;
+  document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id==='v-'+v));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===v));
+  $('viewTitle').textContent=TITLES[v];
+  if(v==='camera')startCam();else stopCam();
+}
+document.querySelector('.tabs').onclick=e=>{const t=e.target.closest('.tab');if(t)go(t.dataset.v);};
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopCam();else if(S.view==='camera')startCam();});
+
+let tt;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),1400);}
+
+renderCats();renderGrid();applyGuide();renderGal();renderAllPoses();
+</script>
+</body>
+</html>
