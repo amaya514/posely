@@ -3,7 +3,7 @@ import { cutout } from './cutout.js';
 import { loadTracker, toPoints, compare } from './match.js';
 
 const $ = id => document.getElementById(id);
-const CUT_V = 1;
+const CUT_V = 3;
 let framed = false; try { framed = window.self !== window.top; } catch (e) { framed = true; }
 
 const S = { cat: 'All', pose: null, custom: [], stream: null, facing: 'environment', timer: 0, photos: [], flip: 1, scale: 1,

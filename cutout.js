@@ -22,18 +22,46 @@ export async function cutout(src, { maxH = 1400, tol = 30 } = {}) {
   const med = ch => { const v = border.map(i => d[i * 4 + ch]).sort((a, b) => a - b); return v[v.length >> 1]; };
   const bg = [med(0), med(1), med(2)];
   const dist = i => Math.hypot(d[i * 4] - bg[0], d[i * 4 + 1] - bg[1], d[i * 4 + 2] - bg[2]);
+  // pictures that already have a transparent background (e.g. Blender renders) only need cropping
+  const clearEdge = border.filter(i => d[i * 4 + 3] < 8).length > border.length * 0.9;
 
   // flood fill from every edge pixel that matches the background
   const state = new Uint8Array(w * h); // 0 unknown, 1 background
   const stack = [];
-  for (const i of border) if (dist(i) < tol) { state[i] = 1; stack.push(i); }
-  for (let x = 1; x < w; x += 2) { const i = x; if (!state[i] && dist(i) < tol) { state[i] = 1; stack.push(i); } }
+  if (!clearEdge) for (const i of border) if (dist(i) < tol) { state[i] = 1; stack.push(i); }
+  if (!clearEdge) for (let x = 1; x < w; x += 2) { const i = x; if (!state[i] && dist(i) < tol) { state[i] = 1; stack.push(i); } }
+  // A pixel joins the background only if it is (1) near the background colour, (2) about as grey as the
+  // background (cream clothes and skin are warmer), and (3) a smooth step from the background pixel next
+  // to it. The last two stop the fill at the figure's outline even where light clothes are close in brightness.
+  const chroma = i => Math.max(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) - Math.min(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]);
+  const bgChroma = Math.max(...bg) - Math.min(...bg);
+  const step = (a, b) => Math.abs(d[a * 4] - d[b * 4]) + Math.abs(d[a * 4 + 1] - d[b * 4 + 1]) + Math.abs(d[a * 4 + 2] - d[b * 4 + 2]);
+  const isBg = (n, from) => dist(n) < tol * 1.6 && chroma(n) <= bgChroma + 9 && step(n, from) < 14;
   while (stack.length) {
     const i = stack.pop(), x = i % w;
     const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w];
     for (const n of nb) {
       if (n < 0 || n >= w * h || state[n]) continue;
-      if (dist(n) < tol) { state[n] = 1; stack.push(n); }
+      if (isBg(n, i)) { state[n] = 1; stack.push(n); }
+    }
+  }
+  // second pass: grey background trapped inside shapes (chair backs, gaps between arm and body).
+  // Only clearly grey pockets that are big enough are removed, so small highlights on clothes stay.
+  if (!clearEdge) {
+    const strict = i => dist(i) < tol && chroma(i) <= bgChroma + 4;
+    const minArea = Math.max(150, w * h * 0.0008);
+    const seen = new Uint8Array(w * h);
+    for (let s = 0; s < w * h; s++) {
+      if (state[s] || seen[s] || !strict(s)) continue;
+      const region = [s]; seen[s] = 1;
+      for (let k = 0; k < region.length; k++) {
+        const i = region[k], x = i % w;
+        for (const n of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) {
+          if (n < 0 || n >= w * h || seen[n] || state[n]) continue;
+          if (isBg(n, i)) { seen[n] = 1; region.push(n); }
+        }
+      }
+      if (region.length >= minArea) for (const i of region) state[i] = 1;
     }
   }
   // clear background; soften the edge one pixel deep
