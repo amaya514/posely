@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f6f1eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Posely">
+<meta name="description" content="Pick a pose, line up with the see-through guide, take a better photo.">
+<title>Posely – Pose Guide Camera</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --cream:#f6f1eb; --card:#fffaf5; --sand:#e9ddd0; --sand2:#dccbb9; --ink:#2b2622; --muted:#8a8079; --line:#e6dbd0;
+  --gold:#b88b62; --ok:#3f9b6b;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#e9e2da;color:var(--ink);font-family:"Plus Jakarta Sans",system-ui,sans-serif}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+[hidden]{display:none!important}
+#app{max-width:480px;height:100%;margin:0 auto;background:var(--cream);display:flex;flex-direction:column;position:relative;overflow:hidden}
+.top{padding:calc(16px + var(--safe-t)) 20px 8px;display:flex;align-items:center;justify-content:space-between}
+.brand{font-family:"Playfair Display",serif;font-size:28px;font-weight:600;letter-spacing:-.3px}
+.brand i{color:var(--gold);font-weight:500}
+.installBtn{padding:7px 14px;border-radius:999px;background:var(--ink);color:var(--cream);font-size:12px;font-weight:700}
+main{flex:1;overflow:hidden;position:relative}
+.view{position:absolute;inset:0;overflow-y:auto;padding:0 18px 24px;display:none}
+.view.active{display:block}
+#v-camera{padding:0;background:#0d0c0b;color:#fff;flex-direction:column;overflow:hidden}
+#v-camera.active{display:flex}
+.lede{color:var(--muted);font-size:13.5px;margin:0 0 12px;line-height:1.5}
+
+/* chips + cards */
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 14px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;padding:8px 15px;border-radius:999px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;border:1px solid var(--line)}
+.chip.on{background:var(--ink);color:var(--cream);border-color:var(--ink)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{background:var(--card);border-radius:20px;overflow:hidden;text-align:left;display:flex;flex-direction:column;position:relative;box-shadow:0 1px 2px rgba(60,40,20,.06),0 6px 18px rgba(60,40,20,.06)}
+.card .thumb{aspect-ratio:3/4;overflow:hidden;background:linear-gradient(165deg,#f3ebe2 0%,#e6d8c9 100%);display:flex;align-items:flex-end;justify-content:center;padding:12px 10px 0}
+.card .thumb img{width:100%;height:100%;object-fit:contain;object-position:bottom}
+.card .meta{padding:10px 12px 12px}
+.card .name{font-weight:700;font-size:13.5px}
+.card .cat{color:var(--muted);font-size:11.5px;margin-top:2px}
+.card .tag{position:absolute;left:10px;top:10px;background:rgba(255,250,245,.85);border-radius:999px;padding:3px 9px;font-size:10px;font-weight:700;color:var(--gold)}
+.card .del{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;background:rgba(43,38,34,.7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700}
+.card.missing .thumb{align-items:center;padding:14px}
+.missingBox{width:100%;height:100%;border:1.5px dashed var(--sand2);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;color:var(--muted);font-size:11px;padding:8px}
+.missingBox b{color:var(--ink);font-size:11px;word-break:break-all}
+.loadingFig{width:55%;height:80%;border-radius:40px;background:linear-gradient(90deg,#eadfd3,#f4ece4,#eadfd3);background-size:200% 100%;animation:sh 1.2s infinite linear;align-self:center}
+@keyframes sh{to{background-position:-200% 0}}
+.progress{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin:0 0 14px;font-size:13px;line-height:1.5;color:var(--muted)}
+.progress b{color:var(--ink)}
+.bar{height:6px;background:var(--sand);border-radius:99px;overflow:hidden;margin-top:8px}
+.bar span{display:block;height:100%;background:var(--gold)}
+.loadOwn{display:block;margin:16px 0 6px;padding:16px;border:1.5px dashed var(--sand2);border-radius:18px;text-align:center;font-weight:700;font-size:14px;cursor:pointer;background:var(--card)}
+.loadOwn small{display:block;color:var(--muted);font-weight:500;margin-top:4px;font-size:12px}
+.empty{color:var(--muted);font-size:14px;padding:30px 10px;text-align:center;grid-column:1/-1}
+
+/* camera */
+.stage{position:relative;width:100%;flex:1;min-height:0;background:#000;overflow:hidden;touch-action:none}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.stage video.mirror{transform:scaleX(-1)}
+.gridlines{position:absolute;inset:0;pointer-events:none;display:none;
+  background-image:linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px),transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px)),
+  linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px),transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px))}
+.gridlines.on{display:block}
+.guide{position:absolute;left:50%;top:56%;height:80%;aspect-ratio:var(--ar,.5);transform:translate(-50%,-50%) scale(var(--s,1)) scaleX(var(--fx,1));cursor:grab;touch-action:none;opacity:.55;transition:opacity .15s}
+.guide img{width:100%;height:100%;display:block;object-fit:contain;pointer-events:none;user-select:none;-webkit-user-drag:none;filter:drop-shadow(0 2px 10px rgba(0,0,0,.3))}
+.guide.ok img{filter:drop-shadow(0 0 3px #4fd18b) drop-shadow(0 0 14px #4fd18b)}
+.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.toolbar{position:absolute;left:0;right:0;top:0;padding:calc(10px + var(--safe-t)) 12px 10px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(rgba(0,0,0,.45),transparent)}
+.tool{width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.35);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;position:relative;font-size:11px;font-weight:700}
+.tool svg{width:19px;height:19px}
+.tool.on{background:#fff;color:#111}
+.tool .badge{position:absolute;bottom:-3px;right:-3px;background:var(--gold);color:#fff;border-radius:999px;font-size:9px;padding:1px 5px}
+.stepPill{position:absolute;left:50%;top:calc(58px + var(--safe-t));transform:translateX(-50%);max-width:88%;background:rgba(255,250,245,.92);color:var(--ink);padding:9px 16px;border-radius:999px;font-size:13px;font-weight:600;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.2);display:flex;gap:8px;align-items:center;white-space:nowrap}
+.stepPill .n{color:var(--gold);font-weight:700}
+.stepPill span:last-child{overflow:hidden;text-overflow:ellipsis}
+.matchBar{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);background:rgba(0,0,0,.6);backdrop-filter:blur(8px);padding:7px 14px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;display:flex;gap:8px;align-items:center}
+.matchBar .pct{color:#f3d3b0;font-weight:700}
+.matchBar.ok{background:rgba(47,140,92,.9)}
+.matchBar.ok .pct{color:#fff}
+.countdown{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:110px;font-weight:700;pointer-events:none;text-shadow:0 4px 30px rgba(0,0,0,.6)}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
+.nocam{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;gap:12px;background:radial-gradient(100% 70% at 50% 30%,#2a2522,#0d0c0b)}
+.nocam h3{margin:0;font-size:18px;font-family:"Playfair Display",serif}
+.nocam p{margin:0;color:#b8ada4;font-size:13px;line-height:1.5}
+.btn{display:inline-block;padding:12px 18px;border-radius:14px;background:var(--ink);color:var(--cream);font-weight:700;font-size:14px;cursor:pointer;text-decoration:none}
+.btn.light{background:var(--cream);color:var(--ink)}
+.btn.ghost{background:transparent;border:1px solid currentColor}
+
+.controls{padding:10px 18px calc(8px + var(--safe-b));display:flex;flex-direction:column;gap:10px;background:#0d0c0b}
+.sliders{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center;font-size:11.5px;color:#b8ada4}
+input[type=range]{width:100%;accent-color:#e8d5c2}
+.row{display:flex;align-items:center;justify-content:space-between}
+.ctl{width:46px;height:46px;border-radius:50%;background:#1f1c1a;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;color:#e8ded5}
+.ctl svg{width:20px;height:20px}
+.ctl.on{background:#e8d5c2;color:#111}
+.shutter{width:72px;height:72px;border-radius:50%;border:4px solid #fff;padding:4px;flex:none}
+.shutter span{display:block;width:100%;height:100%;border-radius:50%;background:#fff;transition:transform .1s}
+.shutter:active span{transform:scale(.88)}
+
+/* gallery */
+.gal{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.gal img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;display:block;cursor:pointer}
+
+/* tabs */
+.tabs{display:flex;border-top:1px solid var(--line);background:var(--cream);padding:6px 6px calc(6px + var(--safe-b))}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;font-size:11px;font-weight:600;color:var(--muted)}
+.tab svg{width:22px;height:22px}
+.tab.on{color:var(--ink)}
+#app.dark .tabs{background:#0d0c0b;border-top-color:#221f1c}
+#app.dark .tab.on{color:#fff}
+#app.dark .top{display:none}
+
+/* viewer, sheets, toast */
+.viewer{position:absolute;inset:0;background:rgba(13,12,11,.97);color:#fff;display:none;flex-direction:column;z-index:20;padding:calc(12px + var(--safe-t)) 16px calc(16px + var(--safe-b))}
+.viewer.on{display:flex}
+.viewer .vtop{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.viewer img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:12px}
+.viewer .hint{color:#b8ada4;font-size:12px;text-align:center;margin:10px 0}
+.viewer .acts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.sheet{position:absolute;inset:0;background:rgba(20,16,12,.45);display:none;align-items:flex-end;z-index:25}
+.sheet.on{display:flex}
+.sheet .box{width:100%;background:var(--cream);border-radius:24px 24px 0 0;padding:22px 22px calc(22px + var(--safe-b))}
+.sheet h3{margin:0 0 10px;font-size:20px;font-family:"Playfair Display",serif}
+.sheet ol{margin:0 0 16px;padding-left:20px;color:var(--muted);font-size:14px;line-height:1.7}
+.sheet ol b{color:var(--ink)}
+.toast{position:absolute;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--cream);padding:10px 16px;border-radius:999px;font-size:13px;font-weight:600;opacity:0;transition:.25s;pointer-events:none;z-index:30;white-space:nowrap}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">Pose<i>ly</i></div>
+    <button class="installBtn" id="installBtn" hidden>Install</button>
+  </header>
+
+  <main>
+    <!-- POSES -->
+    <section id="v-poses" class="view active">
+      <p class="lede">Pick a pose for where you are. Line up with the see-through guide and shoot.</p>
+      <div class="progress" id="progress" hidden></div>
+      <div class="chips" id="cats"></div>
+      <div class="grid" id="poseGrid"></div>
+      <label class="loadOwn">+ Use your own pose picture
+        <small>Any photo or AI image of a pose. The plain background is removed automatically and it stays saved on this device.</small>
+        <input type="file" accept="image/*" id="ownGuide" hidden>
+      </label>
+    </section>
+
+    <!-- CAMERA -->
+    <section id="v-camera" class="view">
+      <div class="stage" id="stage">
+        <video id="video" playsinline autoplay muted></video>
+        <div class="gridlines" id="gridlines"></div>
+        <div class="guide" id="guide"></div>
+        <canvas class="overlay" id="overlay"></canvas>
+        <div class="toolbar">
+          <button class="tool" id="backBtn" aria-label="Back to poses"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+          <div style="display:flex;gap:8px">
+            <button class="tool" id="flashBtn" aria-label="Flash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></button>
+            <button class="tool" id="gridBtn" aria-label="Grid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></button>
+            <button class="tool" id="timerBtn" aria-label="Timer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg><span class="badge" id="timerBadge" hidden></span></button>
+            <button class="tool" id="tipsBtn" aria-label="Show step tips"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button>
+          </div>
+        </div>
+        <button class="stepPill" id="stepPill"><span class="n" id="stepN"></span><span id="stepText"></span></button>
+        <div class="matchBar" id="matchBar" hidden><span class="pct" id="matchPct"></span><span id="matchHint"></span></div>
+        <div class="countdown" id="countdown"></div>
+        <div class="flash" id="flash"></div>
+        <div class="nocam" id="nocam" hidden>
+          <h3>Live camera isn't available here</h3>
+          <p id="nocamMsg">This page is running somewhere that blocks camera access. Open Posely from its own web address or the installed app to get the live guide.</p>
+          <label class="btn light">Take a photo instead<input type="file" accept="image/*" capture="environment" id="fallbackShot" hidden></label>
+          <button class="btn ghost" id="retryCam">Try camera again</button>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="sliders">
+          <span>Guide</span><input type="range" id="opacity" min="0" max="100" value="55" aria-label="Guide opacity">
+          <span>Size</span><input type="range" id="size" min="40" max="180" value="100" aria-label="Guide size">
+        </div>
+        <div class="row">
+          <button class="ctl" id="flipBtn" aria-label="Mirror guide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M8 7l-5 5 5 5V7zM16 7l5 5-5 5V7z"/></svg></button>
+          <button class="ctl" id="matchBtn" aria-label="Live pose matching"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="4.5" r="2"/><path d="M12 7v6M7 9l5 2 5-2M9 20l3-7 3 7"/><path d="M3 3h3M3 3v3M21 3h-3M21 3v3M3 21h3M3 21v-3M21 21h-3M21 21v-3"/></svg></button>
+          <button class="shutter" id="shutter" aria-label="Take photo"><span></span></button>
+          <button class="ctl" id="autoBtn" aria-label="Auto-shoot when matched">AUTO</button>
+          <button class="ctl" id="switchBtn" aria-label="Switch camera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><path d="M9 13a3 3 0 0 1 5.2-2M15 13a3 3 0 0 1-5.2 2M14 9v2h-2M10 17v-2h2"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- GALLERY -->
+    <section id="v-gallery" class="view">
+      <p class="lede" id="galHead">Photos you take appear here. The guide is never saved in the photo.</p>
+      <div class="gal" id="gal"></div>
+    </section>
+  </main>
+
+  <nav class="tabs">
+    <button class="tab on" data-v="poses"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="4.5" r="2.5"/><path d="M12 7v7M6 9l6 2 6-2M9 21l3-7 3 7"/></svg>Poses</button>
+    <button class="tab" data-v="camera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Camera</button>
+    <button class="tab" data-v="gallery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-5-5-9 10"/></svg>Gallery</button>
+  </nav>
+
+  <div class="viewer" id="viewer">
+    <div class="vtop"><b id="vCount"></b><button class="btn light" id="vClose">Close</button></div>
+    <img id="vImg" alt="Captured photo">
+    <div class="hint">Saved on this device. If Save doesn't work, long-press (phone) or right-click (computer) the photo.</div>
+    <div class="acts">
+      <button class="btn light" id="vSave">Save</button>
+      <button class="btn ghost" id="vShare" hidden>Share</button>
+      <button class="btn ghost" id="vDel">Delete</button>
+    </div>
+  </div>
+
+  <div class="sheet" id="iosSheet">
+    <div class="box">
+      <h3>Add Posely to your Home Screen</h3>
+      <ol>
+        <li>Tap the <b>Share</b> button in Safari's toolbar.</li>
+        <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+        <li>Tap <b>Add</b>. Posely now opens full screen like an app.</li>
+      </ol>
+      <button class="btn" id="iosClose">Got it</button>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
