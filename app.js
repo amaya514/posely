@@ -1,13 +1,14 @@
 import { GUIDES, CATS } from './guides.js';
 import { cutout } from './cutout.js';
 import { loadTracker, toPoints, compare } from './match.js';
+import { FILTERS, FilterView } from './filters.js';
 
 const $ = id => document.getElementById(id);
 const CUT_V = 3;
 let framed = false; try { framed = window.self !== window.top; } catch (e) { framed = true; }
 
 const S = { cat: 'All', pose: null, custom: [], stream: null, facing: 'environment', timer: 0, photos: [], flip: 1, scale: 1,
-  pos: { x: 50, y: 56 }, view: 'poses', vIndex: 0, match: true, auto: false, flash: false, tips: true, step: 0 };
+  pos: { x: 50, y: 56 }, view: 'poses', vIndex: 0, match: true, auto: false, flash: false, tips: true, step: 0, fx: 'none', fxAmt: 100, beauty: 0 };
 const LIB = {}; // id -> { status: 'missing' | 'loading' | 'ready', src, ar, refs, key }
 window.__posely = { S, LIB };
 
@@ -39,7 +40,7 @@ function keepStorage() { if (askedPersist) return; askedPersist = true; try { na
 
 const PREF_KEY = 'posely-prefs';
 function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch (e) { return {}; } }
-function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify({ opacity: +$('opacity').value, timer: S.timer, grid: $('gridlines').classList.contains('on'), match: S.match, auto: S.auto, tips: S.tips })); } catch (e) {} }
+function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify({ opacity: +$('opacity').value, timer: S.timer, grid: $('gridlines').classList.contains('on'), match: S.match, auto: S.auto, tips: S.tips, fx: S.fx, fxAmt: S.fxAmt, beauty: S.beauty })); } catch (e) {} }
 
 /* ---------- Pose pictures ---------- */
 // guides/index.json lists the pictures that exist (made by update-guides.mjs), so the app does not
@@ -226,6 +227,52 @@ function setScale(s) { S.scale = Math.min(1.8, Math.max(0.4, s)); $('size').valu
 
 /* ---------- Camera ---------- */
 const video = $('video');
+
+/* ---------- Filters (TikTok-style) ---------- */
+const fx = new FilterView(video, $('view'));
+let fxNameTimer = 0;
+function applyFx() {
+  fx.filter = FILTERS.find(f => f.id === S.fx) || FILTERS[0];
+  fx.amount = S.fxAmt / 100; fx.beauty = S.beauty / 100; fx.mirror = S.facing === 'user';
+  const on = fx.active && !!S.stream;
+  $('view').hidden = !on;
+  video.classList.toggle('under', on);
+  if (on) fx.start($('stage')); else fx.stop();
+  $('fxBtn').classList.toggle('on', fx.active);
+}
+function renderFx() {
+  $('fxStrip').innerHTML = FILTERS.map(f => `<button class="fxChip ${f.id === S.fx ? 'on' : ''}" data-fx="${f.id}"><i style="background:${f.swatch}"></i>${f.name}</button>`).join('');
+  $('fxAmt').value = S.fxAmt; $('fxBeauty').value = S.beauty;
+  $('fxAmt').disabled = S.fx === 'none';
+}
+function setFx(id, announce) {
+  S.fx = id; renderFx(); applyFx(); savePrefs();
+  if (announce) {
+    const f = FILTERS.find(x => x.id === id);
+    $('fxName').textContent = f.name; $('fxName').classList.add('on');
+    clearTimeout(fxNameTimer); fxNameTimer = setTimeout(() => $('fxName').classList.remove('on'), 900);
+  }
+  document.querySelector(`.fxChip[data-fx="${id}"]`)?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+}
+$('fxBtn').onclick = () => {
+  if (!fx.ok) { toast('Filters are not supported on this device'); return; }
+  $('fxPanel').hidden = !$('fxPanel').hidden;
+  if (!$('fxPanel').hidden) document.querySelector('.fxChip.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+};
+$('fxStrip').onclick = e => { const b = e.target.closest('[data-fx]'); if (b) setFx(b.dataset.fx, true); };
+$('fxAmt').oninput = e => { S.fxAmt = +e.target.value; applyFx(); };
+$('fxBeauty').oninput = e => { S.beauty = +e.target.value; applyFx(); };
+$('fxAmt').onchange = savePrefs; $('fxBeauty').onchange = savePrefs;
+// swipe left / right on the camera to change filter, like TikTok
+let swipe = null;
+$('stage').addEventListener('pointerdown', e => { if (!e.target.closest('.guide,.fxPanel,.toolbar,button,input')) swipe = { x: e.clientX, y: e.clientY }; });
+$('stage').addEventListener('pointerup', e => {
+  if (!swipe || !fx.ok) { swipe = null; return; }
+  const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y; swipe = null;
+  if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+  const i = FILTERS.findIndex(f => f.id === S.fx), n = FILTERS.length;
+  setFx(FILTERS[(i + (dx < 0 ? 1 : -1) + n) % n].id, true);
+});
 async function startCam() {
   stopCam();
   $('nocam').hidden = true;
@@ -237,11 +284,12 @@ async function startCam() {
     video.srcObject = stream;
     video.classList.toggle('mirror', S.facing === 'user');
     await video.play().catch(() => {});
+    applyFx();
     applyTorch();
     startMatching();
   } catch (err) { showNoCam(err); }
 }
-function stopCam() { if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; } stopMatching(); }
+function stopCam() { if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; } fx.stop(); stopMatching(); }
 function showNoCam(err) {
   $('nocam').hidden = false;
   if (framed) $('nocamMsg').textContent = 'The camera is blocked inside this preview. Open Posely from its own web address (or the installed app) on your phone for the live guide. You can still take a normal photo below.';
@@ -283,12 +331,30 @@ function capture() {
   const sx = (vw - sw) / 2, sy = (vh - sh) / 2;
   const c = document.createElement('canvas'); c.width = Math.round(sw); c.height = Math.round(sh);
   const g = c.getContext('2d');
-  if (S.facing === 'user') { g.translate(c.width, 0); g.scale(-1, 1); }
-  g.drawImage(video, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  const filtered = fx.active ? fx.renderFull(video, vw, vh) : null; // already mirrored for selfies
+  if (filtered) g.drawImage(filtered, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  else {
+    if (S.facing === 'user') { g.translate(c.width, 0); g.scale(-1, 1); }
+    g.drawImage(video, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  }
   addPhoto(c.toDataURL('image/jpeg', 0.92));
 }
 $('fallbackShot').onchange = e => {
-  const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => addPhoto(r.result); r.readAsDataURL(f); e.target.value = '';
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    if (!fx.active) { addPhoto(r.result); return; }
+    const im = new Image();
+    im.onload = () => {
+      const k = Math.min(1, 2400 / Math.max(im.naturalWidth, im.naturalHeight));
+      const w = Math.round(im.naturalWidth * k), h = Math.round(im.naturalHeight * k);
+      const mir = fx.mirror; fx.mirror = false;
+      const out = fx.renderFull(im, w, h); fx.mirror = mir;
+      addPhoto(out ? out.toDataURL('image/jpeg', 0.92) : r.result);
+    };
+    im.src = r.result;
+  };
+  r.readAsDataURL(f); e.target.value = '';
 };
 
 /* ---------- Live pose matching ---------- */
@@ -431,6 +497,10 @@ if (!framed && 'serviceWorker' in navigator && location.protocol.startsWith('htt
   if (pr.match === false) S.match = false;
   if (pr.auto) S.auto = true;
   if (pr.tips === false) S.tips = false;
+  if (pr.fx && FILTERS.some(f => f.id === pr.fx)) S.fx = pr.fx;
+  if (pr.fxAmt != null) S.fxAmt = pr.fxAmt;
+  if (pr.beauty != null) S.beauty = pr.beauty;
+  renderFx();
   setMatchBtn(); renderCats(); renderGal();
   await dbOpen();
   const [photos, guides] = await Promise.all([dbAll('photos'), dbAll('guides')]);

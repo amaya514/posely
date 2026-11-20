@@ -1,6 +1,6 @@
 // Posely offline support.
-const CACHE = 'posely-v6';
-const SHELL = ['./', './index.html', './app.js', './guides.js', './cutout.js', './match.js', './manifest.webmanifest',
+const CACHE = 'posely-v7';
+const SHELL = ['./', './index.html', './app.js', './guides.js', './cutout.js', './match.js', './filters.js', './manifest.webmanifest',
   './icon-180.png', './icon-192.png', './icon-512.png'];
 const BIG = /\.(glb|fbx|task|wasm)$/;
 
