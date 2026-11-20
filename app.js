@@ -42,7 +42,14 @@ function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREF_KEY)) |
 function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify({ opacity: +$('opacity').value, timer: S.timer, grid: $('gridlines').classList.contains('on'), match: S.match, auto: S.auto, tips: S.tips })); } catch (e) {} }
 
 /* ---------- Pose pictures ---------- */
+// guides/index.json lists the pictures that exist (made by update-guides.mjs), so the app does not
+// have to probe every file name. Without it, each pose is probed one file type at a time.
+let INDEX = null;
+async function loadIndex() {
+  try { const r = await fetch('guides/index.json', { cache: 'no-cache' }); if (r.ok) INDEX = await r.json(); } catch (e) {}
+}
 async function findImage(g) {
+  if (INDEX) { const f = INDEX[g.id]; return f ? { url: 'guides/' + f.file, sig: f.sig } : null; }
   for (const ext of ['png', 'jpg', 'jpeg', 'webp']) {
     const url = `guides/${g.id}.${ext}`;
     try {
@@ -67,7 +74,9 @@ async function prepare(g) {
 }
 async function loadLibrary() {
   GUIDES.forEach(g => { LIB[g.id] = { status: 'loading' }; });
-  renderGrid();
+  await loadIndex();
+  if (INDEX) GUIDES.forEach(g => { if (!INDEX[g.id]) LIB[g.id] = { status: 'missing' }; });
+  renderCats(); renderGrid();
   let i = 0;
   const worker = async () => { while (i < GUIDES.length) { const g = GUIDES[i++]; await prepare(g); updateCard(g); renderProgress(); } };
   await Promise.all([worker(), worker(), worker(), worker()]);
