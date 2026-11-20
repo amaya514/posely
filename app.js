@@ -2,13 +2,14 @@ import { GUIDES, CATS } from './guides.js';
 import { cutout } from './cutout.js';
 import { loadTracker, toPoints, compare } from './match.js';
 import { FILTERS, FilterView } from './filters.js';
+import { LOOKS, LIPS, loadFaces, detectFaces, paintMakeup } from './makeup.js';
 
 const $ = id => document.getElementById(id);
 const CUT_V = 3;
 let framed = false; try { framed = window.self !== window.top; } catch (e) { framed = true; }
 
 const S = { cat: 'All', pose: null, custom: [], stream: null, facing: 'environment', timer: 0, photos: [], flip: 1, scale: 1,
-  pos: { x: 50, y: 56 }, view: 'poses', vIndex: 0, match: true, auto: false, flash: false, tips: true, step: 0, fx: 'none', fxAmt: 100, beauty: 0 };
+  pos: { x: 50, y: 56 }, view: 'poses', vIndex: 0, match: true, auto: false, flash: false, tips: true, step: 0, fx: 'none', fxAmt: 100, beauty: 0, mk: 'none', lip: '', mkAmt: 80 };
 const LIB = {}; // id -> { status: 'missing' | 'loading' | 'ready', src, ar, refs, key }
 window.__posely = { S, LIB };
 
@@ -40,7 +41,7 @@ function keepStorage() { if (askedPersist) return; askedPersist = true; try { na
 
 const PREF_KEY = 'posely-prefs';
 function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch (e) { return {}; } }
-function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify({ opacity: +$('opacity').value, timer: S.timer, grid: $('gridlines').classList.contains('on'), match: S.match, auto: S.auto, tips: S.tips, fx: S.fx, fxAmt: S.fxAmt, beauty: S.beauty })); } catch (e) {} }
+function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify({ opacity: +$('opacity').value, timer: S.timer, grid: $('gridlines').classList.contains('on'), match: S.match, auto: S.auto, tips: S.tips, fx: S.fx, fxAmt: S.fxAmt, beauty: S.beauty, mk: S.mk, lip: S.lip, mkAmt: S.mkAmt })); } catch (e) {} }
 
 /* ---------- Pose pictures ---------- */
 // guides/index.json lists the pictures that exist (made by update-guides.mjs), so the app does not
@@ -273,6 +274,63 @@ $('stage').addEventListener('pointerup', e => {
   const i = FILTERS.findIndex(f => f.id === S.fx), n = FILTERS.length;
   setFx(FILTERS[(i + (dx < 0 ? 1 : -1) + n) % n].id, true);
 });
+$('fxTabs').onclick = e => {
+  const b = e.target.closest('[data-t]'); if (!b) return;
+  document.querySelectorAll('#fxTabs button').forEach(x => x.classList.toggle('on', x === b));
+  $('fxPane').hidden = b.dataset.t !== 'filters'; $('mkPane').hidden = b.dataset.t !== 'makeup';
+};
+
+/* ---------- AR makeup ---------- */
+const mkCanvas = $('makeup'), mkCtx = mkCanvas.getContext('2d');
+let mkRaf = 0, mkLast = 0, mkFaces = [], mkLoading = false;
+const currentLook = () => LOOKS.find(l => l.id === S.mk) || LOOKS[0];
+function renderMakeup() {
+  $('mkStrip').innerHTML = LOOKS.map(l => `<button class="fxChip ${l.id === S.mk ? 'on' : ''}" data-mk="${l.id}"><i style="background:${l.id === 'none' ? 'linear-gradient(135deg,#d9d4ce,#f4efe9)' : `radial-gradient(circle at 50% 62%, ${l.lip} 0 22%, ${l.blush || '#e9cfc4'} 23% 46%, ${l.shadow || '#efe2d8'} 47%)`}"></i>${l.name}</button>`).join('');
+  $('lipRow').innerHTML = LIPS.map(c => c ? `<button class="${c === S.lip ? 'on' : ''}" data-lip="${c}" style="background:${c}" aria-label="Lipstick ${c}"></button>` : `<button class="auto ${!S.lip ? 'on' : ''}" data-lip="" aria-label="Look's own lipstick">AUTO</button>`).join('');
+  $('lipRow').style.visibility = S.mk === 'none' ? 'hidden' : '';
+  $('mkAmt').value = S.mkAmt;
+}
+$('mkStrip').onclick = e => { const b = e.target.closest('[data-mk]'); if (!b) return; S.mk = b.dataset.mk; renderMakeup(); savePrefs(); startMakeup(); toastLook(); };
+$('lipRow').onclick = e => { const b = e.target.closest('[data-lip]'); if (!b) return; S.lip = b.dataset.lip; renderMakeup(); savePrefs(); };
+$('mkAmt').oninput = e => { S.mkAmt = +e.target.value; }; $('mkAmt').onchange = savePrefs;
+function toastLook() { const l = currentLook(); $('fxName').textContent = l.name; $('fxName').classList.add('on'); clearTimeout(fxNameTimer); fxNameTimer = setTimeout(() => $('fxName').classList.remove('on'), 900); }
+// map a face landmark (0..1 of the video frame) onto the on-screen stage, same "cover" crop as the camera view
+function stageMapper() {
+  const W = mkCanvas.width, H = mkCanvas.height, vw = video.videoWidth, vh = video.videoHeight;
+  const k = Math.max(W / vw, H / vh), ox = (W - vw * k) / 2, oy = (H - vh * k) / 2, mir = S.facing === 'user';
+  return p => { const x = p.x * vw * k + ox; return [mir ? W - x : x, p.y * vh * k + oy]; };
+}
+async function startMakeup() {
+  mkCtx.clearRect(0, 0, mkCanvas.width, mkCanvas.height);
+  if (S.mk === 'none' || !S.stream) { stopMakeup(); return; }
+  if (!mkLoading) {
+    mkLoading = true;
+    try { await loadFaces(); } catch (e) { mkLoading = false; toast('Makeup is not available on this device'); return; }
+  }
+  if (!mkRaf) mkRaf = requestAnimationFrame(mkTick);
+}
+function stopMakeup() { if (mkRaf) cancelAnimationFrame(mkRaf); mkRaf = 0; mkFaces = []; mkCtx.clearRect(0, 0, mkCanvas.width, mkCanvas.height); }
+function mkTick(now) {
+  mkRaf = 0;
+  if (S.view !== 'camera' || !S.stream || S.mk === 'none') { mkCtx.clearRect(0, 0, mkCanvas.width, mkCanvas.height); return; }
+  mkRaf = requestAnimationFrame(mkTick);
+  if (now - mkLast < 33 || video.readyState < 2 || !video.videoWidth) return;
+  mkLast = now;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = Math.round(mkCanvas.clientWidth * dpr), H = Math.round(mkCanvas.clientHeight * dpr);
+  if (mkCanvas.width !== W || mkCanvas.height !== H) { mkCanvas.width = W; mkCanvas.height = H; }
+  mkFaces = detectFaces(video);
+  mkCtx.clearRect(0, 0, W, H);
+  paintMakeup(mkCtx, mkFaces, stageMapper(), currentLook(), S.lip, S.mkAmt / 100);
+}
+// paint the current makeup onto a finished photo canvas; crop = the part of the frame the photo shows
+function bakeMakeup(c, faces, crop) {
+  if (S.mk === 'none' || !faces.length) return;
+  const layer = document.createElement('canvas'); layer.width = c.width; layer.height = c.height;
+  const k = c.width / crop.sw, mir = crop.mirror;
+  paintMakeup(layer.getContext('2d'), faces, p => { const x = (p.x * crop.fw - crop.sx) * k; return [mir ? c.width - x : x, (p.y * crop.fh - crop.sy) * k]; }, currentLook(), S.lip, S.mkAmt / 100);
+  const g = c.getContext('2d'); g.save(); g.globalCompositeOperation = 'multiply'; g.drawImage(layer, 0, 0); g.restore();
+}
 async function startCam() {
   stopCam();
   $('nocam').hidden = true;
@@ -285,11 +343,12 @@ async function startCam() {
     video.classList.toggle('mirror', S.facing === 'user');
     await video.play().catch(() => {});
     applyFx();
+    startMakeup();
     applyTorch();
     startMatching();
   } catch (err) { showNoCam(err); }
 }
-function stopCam() { if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; } fx.stop(); stopMatching(); }
+function stopCam() { if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; } fx.stop(); stopMakeup(); stopMatching(); }
 function showNoCam(err) {
   $('nocam').hidden = false;
   if (framed) $('nocamMsg').textContent = 'The camera is blocked inside this preview. Open Posely from its own web address (or the installed app) on your phone for the live guide. You can still take a normal photo below.';
@@ -337,6 +396,7 @@ function capture() {
     if (S.facing === 'user') { g.translate(c.width, 0); g.scale(-1, 1); }
     g.drawImage(video, sx, sy, sw, sh, 0, 0, c.width, c.height);
   }
+  if (S.mk !== 'none') bakeMakeup(c, detectFaces(video), { sx, sy, sw, fw: vw, fh: vh, mirror: S.facing === 'user' });
   addPhoto(c.toDataURL('image/jpeg', 0.92));
 }
 $('fallbackShot').onchange = e => {
@@ -500,7 +560,10 @@ if (!framed && 'serviceWorker' in navigator && location.protocol.startsWith('htt
   if (pr.fx && FILTERS.some(f => f.id === pr.fx)) S.fx = pr.fx;
   if (pr.fxAmt != null) S.fxAmt = pr.fxAmt;
   if (pr.beauty != null) S.beauty = pr.beauty;
-  renderFx();
+  if (pr.mk && LOOKS.some(l => l.id === pr.mk)) S.mk = pr.mk;
+  if (pr.lip != null) S.lip = pr.lip;
+  if (pr.mkAmt != null) S.mkAmt = pr.mkAmt;
+  renderFx(); renderMakeup();
   setMatchBtn(); renderCats(); renderGal();
   await dbOpen();
   const [photos, guides] = await Promise.all([dbAll('photos'), dbAll('guides')]);

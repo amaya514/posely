@@ -1,14 +1,26 @@
 // Live pose matching with Google's MediaPipe Pose Landmarker (pre-trained, runs on the phone).
 // Compares limb angles on screen, so it doesn't matter how big you are in the frame.
-let landmarker = null, loading = null;
+let landmarker = null, loading = null, vision = null;
+
+// one shared copy of Google's vision library for both the body and the face tracker
+export function getVision() {
+  if (!vision) {
+    vision = (async () => {
+      const mod = await import('./vendor/mediapipe/vision_bundle.js');
+      const fs = await mod.FilesetResolver.forVisionTasks(new URL('./vendor/mediapipe/wasm', import.meta.url).href);
+      return { mod, fs };
+    })();
+    vision.catch(() => { vision = null; });
+  }
+  return vision;
+}
 
 export function loadTracker() {
   if (landmarker) return Promise.resolve(landmarker);
   if (loading) return loading;
   loading = (async () => {
-    const { FilesetResolver, PoseLandmarker } = await import('./vendor/mediapipe/vision_bundle.js');
-    const base = new URL('./vendor/mediapipe/wasm', import.meta.url).href;
-    const fs = await FilesetResolver.forVisionTasks(base);
+    const { mod, fs } = await getVision();
+    const { PoseLandmarker } = mod;
     const opts = d => ({ baseOptions: { modelAssetPath: new URL('./models/pose_landmarker_full.task', import.meta.url).href, delegate: d },
       runningMode: 'VIDEO', numPoses: 3, minPoseDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
     try { landmarker = await PoseLandmarker.createFromOptions(fs, opts('GPU')); }
